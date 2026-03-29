@@ -1,0 +1,7 @@
+# Cloudflare Pages headers
+# Aggressive caching for immutable audio samples
+/samples/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
