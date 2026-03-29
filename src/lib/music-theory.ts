@@ -27,7 +27,7 @@ export function noteNameToMidi(name: NoteName): MidiNote {
   const [, pitchClass, octaveStr] = match
   const noteIndex = NOTE_NAMES.indexOf(pitchClass as PitchClass)
   if (noteIndex === -1) throw new Error(`Invalid pitch class: ${pitchClass}`)
-  return (parseInt(octaveStr) + 1) * 12 + noteIndex
+  return (parseInt(octaveStr!) + 1) * 12 + noteIndex
 }
 
 /**
