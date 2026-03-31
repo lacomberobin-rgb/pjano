@@ -28,6 +28,15 @@ export class GameEngine {
 
   setRenderer(renderer: FallingNotesRenderer): void {
     this.renderer = renderer
+    // If game already started, push notes to the renderer now (fixes async race)
+    if (this.song && this.scheduler.getAllNotes().length > 0) {
+      renderer.setNotes(
+        this.scheduler.getAllNotes(),
+        this.getMinNote(),
+        this.getMaxNote(),
+      )
+      renderer.setNoteResults(this.noteResultsMap)
+    }
   }
 
   start(song: Song): void {

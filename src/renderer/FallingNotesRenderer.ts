@@ -18,6 +18,7 @@ export class FallingNotesRenderer {
   private app: Application
   private notesContainer: Container
   private hitZone: Graphics
+  private laneLines: Graphics
   private noteGraphics = new Map<string, Graphics>()
 
   private songNotes: SongNote[] = []
@@ -32,6 +33,7 @@ export class FallingNotesRenderer {
     this.app = new Application()
     this.notesContainer = new Container()
     this.hitZone = new Graphics()
+    this.laneLines = new Graphics()
   }
 
   async init(canvas: HTMLCanvasElement): Promise<void> {
@@ -44,9 +46,10 @@ export class FallingNotesRenderer {
       resolution: window.devicePixelRatio || 1,
     })
 
+    this.app.stage.addChild(this.laneLines)
     this.app.stage.addChild(this.notesContainer)
     this.app.stage.addChild(this.hitZone)
-    this.drawHitZone()
+    this.drawChrome()
   }
 
   setNotes(notes: SongNote[], low: number, high: number): void {
@@ -54,50 +57,66 @@ export class FallingNotesRenderer {
     this.lowNote = low
     this.highNote = high
     this.clearNoteGraphics()
+    this.drawChrome()
   }
 
   setNoteResults(results: Map<string, NoteResult>): void {
     this.noteResults = results
   }
 
+  /**
+   * Compute X position and width for a note, matching the PianoKeyboard layout exactly.
+   * White keys are evenly distributed across the canvas width.
+   * Black keys are centered between their neighboring white keys with the same
+   * per-note-in-octave offsets used by PianoKeyboard.
+   */
   private getKeyX(midiNote: number): { x: number; width: number } {
     const w = this.app.screen.width
-    // Count white keys in range
-    let whiteCount = 0
-    for (let i = this.lowNote; i <= this.highNote; i++) {
-      if (!isBlackKey(i)) whiteCount++
-    }
+    const whiteCount = this.countWhiteKeys()
     const whiteKeyWidth = w / whiteCount
 
     if (isBlackKey(midiNote)) {
-      // Position black key between surrounding white keys
+      // Count white keys before this black key
       let whiteIndex = 0
       for (let i = this.lowNote; i < midiNote; i++) {
         if (!isBlackKey(i)) whiteIndex++
       }
-      return {
-        x: whiteIndex * whiteKeyWidth - whiteKeyWidth * 0.15,
-        width: whiteKeyWidth * 0.6,
+      // Same offset logic as PianoKeyboard
+      const noteInOctave = midiNote % 12
+      const offsets: Record<number, number> = {
+        1: -0.05, 3: 0.05, 6: -0.08, 8: 0, 10: 0.08,
       }
+      const offset = offsets[noteInOctave] ?? 0
+      const centerX = (whiteIndex + offset) * whiteKeyWidth
+      const bw = whiteKeyWidth * 0.6
+      return { x: centerX - bw / 2, width: bw }
     }
 
+    // White key
     let whiteIndex = 0
     for (let i = this.lowNote; i < midiNote; i++) {
       if (!isBlackKey(i)) whiteIndex++
     }
-    return {
-      x: whiteIndex * whiteKeyWidth,
-      width: whiteKeyWidth - 1,
+    return { x: whiteIndex * whiteKeyWidth, width: whiteKeyWidth - 1 }
+  }
+
+  private countWhiteKeys(): number {
+    let count = 0
+    for (let i = this.lowNote; i <= this.highNote; i++) {
+      if (!isBlackKey(i)) count++
     }
+    return count
+  }
+
+  /** Y coordinate of the "hit zone" line — notes reach here at their play time */
+  private getHitZoneY(): number {
+    return this.app.screen.height - 6
   }
 
   update(currentTime: number): void {
     if (this._destroyed) return
 
-    const h = this.app.screen.height
-    const hitZoneY = h * 0.88
-
-    // Determine visible notes
+    const hitZoneY = this.getHitZoneY()
     const windowStart = currentTime - 0.5
     const windowEnd = currentTime + this.visibleWindow
 
@@ -111,7 +130,7 @@ export class FallingNotesRenderer {
       }
     }
 
-    // Add/update visible notes
+    // Add / update visible notes
     for (const note of this.songNotes) {
       if (note.time > windowEnd || note.time + note.duration < windowStart) continue
 
@@ -123,50 +142,59 @@ export class FallingNotesRenderer {
       }
 
       const { x, width } = this.getKeyX(note.midiNote)
-      const noteTop = hitZoneY - (note.time - currentTime) * this.pixelsPerSecond
-      const noteHeight = Math.max(note.duration * this.pixelsPerSecond, 8)
+      const noteBottom = hitZoneY - (note.time - currentTime) * this.pixelsPerSecond
+      const noteHeight = Math.max(note.duration * this.pixelsPerSecond, 10)
 
       // Determine color
       const result = this.noteResults.get(note.id)
       let color: number
+      let alpha = 0.85
       if (result) {
         color = GRADE_COLORS[result.grade]
+        if (result.grade === 'miss') alpha = 0.25
       } else if (note.missed) {
         color = GRADE_COLORS.miss
+        alpha = 0.25
       } else {
         color = isBlackKey(note.midiNote) ? UPCOMING_BLACK_COLOR : UPCOMING_COLOR
       }
 
       gfx.clear()
-      gfx.roundRect(x + 1, noteTop - noteHeight, width - 2, noteHeight, 4)
-      gfx.fill({ color, alpha: result?.grade === 'miss' ? 0.3 : 0.85 })
-
-      // Finger number label
-      if (note.finger && !result) {
-        gfx.circle(x + width / 2, noteTop - noteHeight / 2, 8)
-        gfx.fill({ color: 0xffffff, alpha: 0.9 })
-      }
+      gfx.roundRect(x + 1, noteBottom - noteHeight, width - 2, noteHeight, 4)
+      gfx.fill({ color, alpha })
     }
   }
 
-  private drawHitZone(): void {
+  /** Draw the hit-zone line and faint lane separators */
+  private drawChrome(): void {
+    if (this._destroyed) return
     const w = this.app.screen.width
     const h = this.app.screen.height
-    const y = h * 0.88
+    const hitY = this.getHitZoneY()
+    const whiteCount = this.countWhiteKeys()
+    const whiteKeyWidth = w / whiteCount
 
+    // Hit zone glow + line
     this.hitZone.clear()
-    this.hitZone.rect(0, y - 2, w, 4)
-    this.hitZone.fill({ color: 0x7c3aed, alpha: 0.8 })
+    this.hitZone.rect(0, hitY - 4, w, 8)
+    this.hitZone.fill({ color: 0x7c3aed, alpha: 0.18 })
+    this.hitZone.rect(0, hitY - 1, w, 3)
+    this.hitZone.fill({ color: 0x7c3aed, alpha: 0.7 })
 
-    // Glow
-    this.hitZone.rect(0, y - 6, w, 12)
-    this.hitZone.fill({ color: 0x7c3aed, alpha: 0.15 })
+    // Lane separators (faint vertical lines between white keys)
+    this.laneLines.clear()
+    for (let i = 1; i < whiteCount; i++) {
+      const x = i * whiteKeyWidth
+      this.laneLines.moveTo(x, 0)
+      this.laneLines.lineTo(x, h)
+      this.laneLines.stroke({ color: 0xffffff, alpha: 0.04, width: 1 })
+    }
   }
 
   resize(): void {
     if (this._destroyed) return
     this.app.resize()
-    this.drawHitZone()
+    this.drawChrome()
   }
 
   private clearNoteGraphics(): void {

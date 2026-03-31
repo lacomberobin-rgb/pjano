@@ -7,6 +7,8 @@ import type { Song } from '@/types/song'
 export function useGameEngine() {
   const engineRef = useRef<GameEngine | null>(null)
   const rendererRef = useRef<FallingNotesRenderer | null>(null)
+  const rendererReadyRef = useRef(false)
+  const pendingSongRef = useRef<Song | null>(null)
 
   useEffect(() => {
     const engine = new GameEngine()
@@ -20,20 +22,39 @@ export function useGameEngine() {
     return () => {
       unsub()
       engine.destroy()
+      rendererRef.current?.destroy()
+      rendererRef.current = null
+      rendererReadyRef.current = false
     }
   }, [])
 
   const setCanvas = useCallback((canvas: HTMLCanvasElement | null) => {
     if (!canvas) return
+    // Destroy previous renderer if any
+    rendererRef.current?.destroy()
+    rendererReadyRef.current = false
+
     const renderer = new FallingNotesRenderer()
     rendererRef.current = renderer
     renderer.init(canvas).then(() => {
+      rendererReadyRef.current = true
       engineRef.current?.setRenderer(renderer)
+
+      // If a song was waiting for the renderer, start it now
+      if (pendingSongRef.current) {
+        engineRef.current?.start(pendingSongRef.current)
+        pendingSongRef.current = null
+      }
     })
   }, [])
 
   const startGame = useCallback((song: Song) => {
-    engineRef.current?.start(song)
+    if (rendererReadyRef.current) {
+      engineRef.current?.start(song)
+    } else {
+      // Renderer not ready yet — queue the start
+      pendingSongRef.current = song
+    }
   }, [])
 
   const pauseGame = useCallback(() => {
