@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useAudioEngine } from '@/hooks/useAudioEngine'
+import { useInput } from '@/hooks/useInput'
 import { inputManager } from '@/input/InputManager'
 import { ComputerKeyboardAdapter } from '@/input/ComputerKeyboardAdapter'
 import { MidiInputAdapter } from '@/input/MidiInputAdapter'
+import { PianoKeyboard } from '@/components/game/PianoKeyboard'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { TopBar } from '@/components/layout/TopBar'
 import { DashboardPage } from '@/components/dashboard/DashboardPage'
@@ -22,6 +24,8 @@ export default function App() {
   const [totalXP, setTotalXP] = useState(0)
   const [streak, setStreak] = useState(0)
 
+  const [activeNotes, setActiveNotes] = useState<Set<number>>(new Set())
+
   // Set up input adapters
   useEffect(() => {
     const keyboard = new ComputerKeyboardAdapter(inputManager)
@@ -35,6 +39,16 @@ export default function App() {
       midi.disconnect()
     }
   }, [])
+
+  // Track active notes for the persistent piano keyboard
+  useInput((event) => {
+    setActiveNotes(prev => {
+      const next = new Set(prev)
+      if (event.type === 'noteon') next.add(event.note)
+      else next.delete(event.note)
+      return next
+    })
+  })
 
   const handlePlaySong = useCallback((song: Song) => {
     setActiveSong(song)
@@ -124,6 +138,17 @@ export default function App() {
             <SettingsPage />
           )}
         </main>
+
+        {/* Persistent piano keyboard — always playable */}
+        <div className="border-t border-border bg-card px-4 py-2 flex justify-center">
+          <PianoKeyboard
+            lowNote={48}
+            highNote={84}
+            activeNotes={activeNotes}
+            targetNotes={new Set()}
+            noteResults={new Map()}
+          />
+        </div>
       </div>
     </div>
   )
