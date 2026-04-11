@@ -34,7 +34,32 @@ export class InputManager {
     return new Set(this.activeNotes)
   }
 
+  lightUpNote(note: number, colorVelocity = 127): void {
+    for (const adapter of this.adapters) {
+      if (adapter.lightUpNote) {
+        adapter.lightUpNote(note, colorVelocity)
+      }
+    }
+  }
+
+  turnOffNote(note: number): void {
+    for (const adapter of this.adapters) {
+      if (adapter.turnOffNote) {
+        adapter.turnOffNote(note)
+      }
+    }
+  }
+
+  clearAllLights(): void {
+    for (const adapter of this.adapters) {
+      if (adapter.clearAllLights) {
+        adapter.clearAllLights()
+      }
+    }
+  }
+
   destroy(): void {
+    this.clearAllLights()
     for (const adapter of this.adapters) {
       adapter.disconnect()
     }

@@ -101,8 +101,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     })
   },
 
-  setPlaybackSpeed: (speed) => set({ playbackSpeed: speed }),
+  setPlaybackSpeed: (speed) => set({ playbackSpeed: Math.min(Math.max(0.1, speed), 2) }),
   setWaitMode: (enabled) => set({ isWaitMode: enabled }),
+  setAutoSpeed: (enabled) => set({ isAutoSpeedEnabled: enabled }),
   setLoop: (start, end) => set({ loopStart: start, loopEnd: end }),
 
   getSessionGrade: () => {

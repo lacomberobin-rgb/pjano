@@ -1,4 +1,4 @@
-import { Application, Container, Graphics } from 'pixi.js'
+import { Application, Container, Graphics, Text, TextStyle } from 'pixi.js'
 import type { SongNote } from '@/types/song'
 import type { NoteResult, TimingGrade } from '@/types/scoring'
 import { isBlackKey } from '@/lib/music-theory'
@@ -14,12 +14,30 @@ const GRADE_COLORS: Record<TimingGrade, number> = {
 const UPCOMING_COLOR = 0x7c3aed
 const UPCOMING_BLACK_COLOR = 0x9333ea
 
+interface Particle {
+  gfx: Graphics
+  vx: number
+  vy: number
+  life: number
+  maxLife: number
+}
+
+interface FloatingText {
+  text: Text
+  vy: number
+  life: number
+}
+
 export class FallingNotesRenderer {
   private app: Application
   private notesContainer: Container
+  private particlesContainer: Container
+  private textContainer: Container
   private hitZone: Graphics
   private laneLines: Graphics
   private noteGraphics = new Map<string, Graphics>()
+  private particles: Particle[] = []
+  private floatingTexts: FloatingText[] = []
 
   private songNotes: SongNote[] = []
   private noteResults = new Map<string, NoteResult>()
@@ -32,6 +50,8 @@ export class FallingNotesRenderer {
   constructor() {
     this.app = new Application()
     this.notesContainer = new Container()
+    this.particlesContainer = new Container()
+    this.textContainer = new Container()
     this.hitZone = new Graphics()
     this.laneLines = new Graphics()
   }
@@ -49,6 +69,8 @@ export class FallingNotesRenderer {
     this.app.stage.addChild(this.laneLines)
     this.app.stage.addChild(this.notesContainer)
     this.app.stage.addChild(this.hitZone)
+    this.app.stage.addChild(this.particlesContainer)
+    this.app.stage.addChild(this.textContainer)
     this.drawChrome()
   }
 
@@ -62,6 +84,55 @@ export class FallingNotesRenderer {
 
   setNoteResults(results: Map<string, NoteResult>): void {
     this.noteResults = results
+  }
+
+  triggerHitEffect(noteId: string, grade: TimingGrade): void {
+    const note = this.songNotes.find(n => n.id === noteId)
+    if (!note) return
+
+    const { x, width } = this.getKeyX(note.midiNote)
+    const hitY = this.getHitZoneY()
+    const color = GRADE_COLORS[grade]
+
+    // Create particles
+    const particleCount = grade === 'perfect' ? 12 : grade === 'great' ? 8 : 5
+    for (let i = 0; i < particleCount; i++) {
+      const gfx = new Graphics()
+      const size = 2 + Math.random() * 4
+      gfx.circle(0, 0, size)
+      gfx.fill({ color })
+      gfx.x = x + width / 2
+      gfx.y = hitY
+
+      this.particlesContainer.addChild(gfx)
+      this.particles.push({
+        gfx,
+        vx: (Math.random() - 0.5) * 10,
+        vy: -Math.random() * 10 - 2,
+        life: 1,
+        maxLife: 0.5 + Math.random() * 0.5,
+      })
+    }
+
+    // Create floating text
+    const style = new TextStyle({
+      fontFamily: 'Inter',
+      fontSize: grade === 'perfect' ? 24 : 18,
+      fontWeight: '900',
+      fill: color,
+      dropShadow: {
+        alpha: 0.5,
+        blur: 4,
+        color: 0x000000,
+        distance: 2,
+      },
+    })
+    const text = new Text({ text: grade.toUpperCase(), style })
+    text.anchor.set(0.5)
+    text.x = x + width / 2
+    text.y = hitY - 40
+    this.textContainer.addChild(text)
+    this.floatingTexts.push({ text, vy: -2, life: 1 })
   }
 
   /**
@@ -113,6 +184,8 @@ export class FallingNotesRenderer {
     return this.app.screen.height - 6
   }
 
+  private noteTexts = new Map<string, Text>()
+
   update(currentTime: number): void {
     if (this._destroyed) return
 
@@ -120,17 +193,64 @@ export class FallingNotesRenderer {
     const windowStart = currentTime - 0.5
     const windowEnd = currentTime + this.visibleWindow
 
-    // Remove off-screen sprites
+    // 1. Update Particles
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      const p = this.particles[i]
+      p.life -= 0.02
+      p.gfx.x += p.vx
+      p.gfx.y += p.vy
+      p.vy += 0.4 // gravity
+      p.gfx.alpha = p.life
+
+      if (p.life <= 0) {
+        this.particlesContainer.removeChild(p.gfx)
+        p.gfx.destroy()
+        this.particles.splice(i, 1)
+      }
+    }
+
+    // 2. Update Floating Texts
+    for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
+      const t = this.floatingTexts[i]
+      t.life -= 0.015
+      t.text.y += t.vy
+      t.vy *= 0.95 // slow down upward movement
+      t.text.alpha = t.life
+      t.text.scale.set(1 + (1 - t.life) * 0.5)
+
+      if (t.life <= 0) {
+        this.textContainer.removeChild(t.text)
+        t.text.destroy()
+        this.floatingTexts.splice(i, 1)
+      }
+    }
+
+    // 3. Update Notes
+    // Remove off-screen sprites and texts
     for (const [id, gfx] of this.noteGraphics) {
       const note = this.songNotes.find(n => n.id === id)
       if (!note || note.time + note.duration < windowStart) {
         this.notesContainer.removeChild(gfx)
         gfx.destroy()
         this.noteGraphics.delete(id)
+        
+        const txt = this.noteTexts.get(id)
+        if (txt) {
+          this.textContainer.removeChild(txt)
+          txt.destroy()
+          this.noteTexts.delete(id)
+        }
       }
     }
 
     // Add / update visible notes
+    const fingerStyle = new TextStyle({
+      fontFamily: 'Inter',
+      fontSize: 14,
+      fontWeight: '900',
+      fill: 0xffffff,
+    })
+
     for (const note of this.songNotes) {
       if (note.time > windowEnd || note.time + note.duration < windowStart) continue
 
@@ -162,6 +282,26 @@ export class FallingNotesRenderer {
       gfx.clear()
       gfx.roundRect(x + 1, noteBottom - noteHeight, width - 2, noteHeight, 4)
       gfx.fill({ color, alpha })
+
+      // Finger number
+      if (note.finger && !result && !note.missed) {
+        let txt = this.noteTexts.get(note.id)
+        if (!txt) {
+          txt = new Text({ text: note.finger.toString(), style: fingerStyle })
+          txt.anchor.set(0.5)
+          this.textContainer.addChild(txt)
+          this.noteTexts.set(note.id, txt)
+        }
+        txt.x = x + width / 2
+        txt.y = noteBottom - 14
+        txt.alpha = alpha
+      } else if (this.noteTexts.has(note.id)) {
+        // Remove text if note was hit or missed
+        const txt = this.noteTexts.get(note.id)!
+        this.textContainer.removeChild(txt)
+        txt.destroy()
+        this.noteTexts.delete(note.id)
+      }
     }
   }
 
@@ -176,10 +316,12 @@ export class FallingNotesRenderer {
 
     // Hit zone glow + line
     this.hitZone.clear()
-    this.hitZone.rect(0, hitY - 4, w, 8)
-    this.hitZone.fill({ color: 0x7c3aed, alpha: 0.18 })
-    this.hitZone.rect(0, hitY - 1, w, 3)
-    this.hitZone.fill({ color: 0x7c3aed, alpha: 0.7 })
+    this.hitZone.rect(0, hitY - 10, w, 20)
+    this.hitZone.fill({ color: 0x7c3aed, alpha: 0.12 })
+    this.hitZone.rect(0, hitY - 2, w, 4)
+    this.hitZone.fill({ color: 0x7c3aed, alpha: 0.6 })
+    this.hitZone.rect(0, hitY - 1, w, 2)
+    this.hitZone.fill({ color: 0xffffff, alpha: 0.8 })
 
     // Lane separators (faint vertical lines between white keys)
     this.laneLines.clear()
@@ -203,6 +345,18 @@ export class FallingNotesRenderer {
       gfx.destroy()
     }
     this.noteGraphics.clear()
+
+    for (const p of this.particles) {
+      this.particlesContainer.removeChild(p.gfx)
+      p.gfx.destroy()
+    }
+    this.particles = []
+
+    for (const t of this.floatingTexts) {
+      this.textContainer.removeChild(t.text)
+      t.text.destroy()
+    }
+    this.floatingTexts = []
   }
 
   destroy(): void {

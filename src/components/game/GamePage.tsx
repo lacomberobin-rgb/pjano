@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useGameStore } from '@/store/gameStore'
+import { useSettingsStore } from '@/store/settingsStore'
 import { useGameEngine } from '@/hooks/useGameEngine'
 import { useInput } from '@/hooks/useInput'
+import { inputManager } from '@/input/InputManager'
 import { PianoKeyboard } from './PianoKeyboard'
 import { ScoreDisplay } from './ScoreDisplay'
 import { TimingFeedback } from './TimingFeedback'
@@ -21,12 +23,31 @@ export function GamePage({ song, onBack }: GamePageProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const { startGame, pauseGame, resumeGame, setCanvas } = useGameEngine()
   const status = useGameStore(s => s.status)
+  const keyboardSize = useSettingsStore(s => s.keyboardSize)
+  
   const [activeNotes, setActiveNotes] = useState<Set<number>>(new Set())
   const [noteResultMap, setNoteResultMap] = useState<Map<number, TimingGrade>>(new Map())
 
-  // Determine piano range from song notes
-  const minNote = Math.max(36, Math.min(...song.notes.map(n => n.midiNote)) - 2)
-  const maxNote = Math.min(96, Math.max(...song.notes.map(n => n.midiNote)) + 2)
+  // Determine piano range from song notes or forced by physical keyboard size
+  const { minNote, maxNote } = useMemo(() => {
+    if (keyboardSize !== 'auto') {
+      switch (keyboardSize) {
+        case 25: return { minNote: 48, maxNote: 72 } // C3 - C5
+        case 37: return { minNote: 36, maxNote: 72 } // C2 - C5
+        case 49: return { minNote: 36, maxNote: 84 } // C2 - C6
+        case 61: return { minNote: 36, maxNote: 96 } // C2 - C7
+        case 88: return { minNote: 21, maxNote: 108 } // A0 - C8
+      }
+    }
+    // Auto mode: find bounds based on the song
+    const songMin = Math.min(...song.notes.map(n => n.midiNote))
+    const songMax = Math.max(...song.notes.map(n => n.midiNote))
+    // Add a small buffer around the song's range
+    return {
+      minNote: Math.max(21, songMin - 2),
+      maxNote: Math.min(108, songMax + 2)
+    }
+  }, [song.notes, keyboardSize])
 
   // Count white keys to set a consistent width for both canvas and keyboard
   const whiteKeyCount = useMemo(() => {
@@ -37,6 +58,9 @@ export function GamePage({ song, onBack }: GamePageProps) {
     return count
   }, [minNote, maxNote])
 
+  // In 1:1 mode, you want keys to roughly match physical size (approx 22-24mm per white key). 
+  // We'll use 40px base, but it scales via CSS depending on screen. 
+  // The important part is that the ratio between keys is perfect.
   const containerWidth = whiteKeyCount * 40
 
   // Initialize canvas
@@ -49,7 +73,10 @@ export function GamePage({ song, onBack }: GamePageProps) {
   // Start game — wait a bit for renderer to initialize
   useEffect(() => {
     const timer = setTimeout(() => startGame(song), 800)
-    return () => clearTimeout(timer)
+    return () => {
+      clearTimeout(timer)
+      inputManager.clearAllLights()
+    }
   }, [song, startGame])
 
   // Track active notes for keyboard
@@ -109,11 +136,60 @@ export function GamePage({ song, onBack }: GamePageProps) {
     [noteResults],
   )
 
-  const targetNotes = useMemo(() => new Set(
-    song.notes
-      .filter(n => !matchedNoteIds.has(n.id) && Math.abs(n.time - currentTime) < 0.3)
-      .map(n => n.midiNote),
-  ), [song.notes, matchedNoteIds, currentTime])
+  // Target notes and their fingerings
+  const isWaitMode = useGameStore(s => s.isWaitMode)
+  const { targetNotes, fingerNumbers } = useMemo(() => {
+    const upcoming = song.notes.filter(n => !matchedNoteIds.has(n.id) && n.time >= currentTime - 0.1)
+    if (upcoming.length === 0) return { targetNotes: new Set<number>(), fingerNumbers: new Map<number, number>() }
+    
+    let filtered: typeof upcoming
+    if (isWaitMode) {
+      const firstTime = Math.min(...upcoming.map(n => n.time))
+      filtered = upcoming.filter(n => n.time === firstTime)
+    } else {
+      filtered = upcoming.filter(n => n.time - currentTime < 0.3)
+    }
+
+    const notes = new Set(filtered.map(n => n.midiNote))
+    const fingers = new Map<number, number>()
+    filtered.forEach(n => {
+      if (n.finger) fingers.set(n.midiNote, n.finger)
+    })
+
+    return { targetNotes: notes, fingerNumbers: fingers }
+  }, [song.notes, matchedNoteIds, currentTime, isWaitMode])
+
+  // Sync target notes with physical MIDI keyboard lights
+  const prevTargetNotesRef = useRef<Set<number>>(new Set())
+  useEffect(() => {
+    if (status !== 'playing') {
+      if (prevTargetNotesRef.current.size > 0) {
+        inputManager.clearAllLights()
+        prevTargetNotesRef.current.clear()
+      }
+      return
+    }
+
+    const current = targetNotes
+    const previous = prevTargetNotesRef.current
+
+    // Turn off notes that are no longer targeted
+    for (const note of previous) {
+      if (!current.has(note)) {
+        inputManager.turnOffNote(note)
+      }
+    }
+
+    // Turn on new target notes
+    for (const note of current) {
+      if (!previous.has(note)) {
+        // Use a velocity of 127 for bright, or map based on finger if available.
+        inputManager.lightUpNote(note, 127)
+      }
+    }
+
+    prevTargetNotesRef.current = new Set(current)
+  }, [targetNotes, status])
 
   if (status === 'complete') {
     return (
@@ -124,23 +200,29 @@ export function GamePage({ song, onBack }: GamePageProps) {
   }
 
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div className="flex flex-col h-full bg-background overflow-hidden">
       {/* Top bar: song info + score */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-border">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card/50 backdrop-blur-md z-10 relative shadow-xl">
         <div>
-          <h2 className="text-sm font-bold">{song.title}</h2>
+          <h2 className="text-xl font-black text-foreground">{song.title}</h2>
           {song.composer && (
-            <p className="text-xs text-muted-foreground">{song.composer}</p>
+            <p className="text-sm font-medium text-muted-foreground">{song.composer}</p>
           )}
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-8">
           <TimingFeedback />
           <ScoreDisplay />
         </div>
       </div>
 
       {/* Falling notes + keyboard share the same width, centered */}
-      <div className="flex-1 flex flex-col items-center min-h-0">
+      <div className="flex-1 flex flex-col items-center min-h-0 bg-gradient-to-b from-background to-card/30 relative">
+        
+        {/* Wait Mode visual indicator background pulse */}
+        {isWaitMode && targetNotes.size > 0 && (
+          <div className="absolute inset-0 bg-primary/5 animate-pulse pointer-events-none" />
+        )}
+
         {/* Falling notes canvas — same width as keyboard */}
         <div
           className="flex-1 relative min-h-0 w-full"
@@ -151,7 +233,7 @@ export function GamePage({ song, onBack }: GamePageProps) {
           {/* Countdown overlay */}
           {status === 'countdown' && (
             <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-6xl font-black text-primary animate-pulse">
+              <span className="text-9xl font-black text-primary animate-pulse drop-shadow-[0_0_30px_rgba(124,58,237,0.5)]">
                 {Math.max(1, Math.ceil(-currentTime / (60 / song.bpm)))}
               </span>
             </div>
@@ -159,33 +241,36 @@ export function GamePage({ song, onBack }: GamePageProps) {
 
           {/* Pause overlay */}
           {status === 'paused' && (
-            <div className="absolute inset-0 flex items-center justify-center bg-background/80">
-              <div className="text-center">
-                <p className="text-2xl font-bold mb-2">Paused</p>
-                <p className="text-sm text-muted-foreground">Press Esc to resume</p>
+            <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm z-50">
+              <div className="text-center bg-card p-8 rounded-3xl border border-border shadow-2xl">
+                <p className="text-4xl font-black mb-2">En Pause</p>
+                <p className="text-muted-foreground font-medium">Appuyez sur <kbd className="bg-muted px-2 py-1 rounded-md text-xs">Échap</kbd> pour reprendre</p>
               </div>
             </div>
           )}
         </div>
 
         {/* Song progress */}
-        <div className="w-full px-4 py-1" style={{ maxWidth: `${containerWidth}px` }}>
+        <div className="w-full px-4 py-2 z-10" style={{ maxWidth: `${containerWidth}px` }}>
           <SongProgress />
         </div>
 
         {/* Piano keyboard — same width as canvas */}
-        <div className="pb-2">
-          <PianoKeyboard
-            lowNote={minNote}
-            highNote={maxNote}
-            activeNotes={activeNotes}
-            targetNotes={targetNotes}
-            noteResults={noteResultMap}
-          />
+        <div className="pb-4 z-10 w-full px-2" style={{ maxWidth: `${containerWidth + 16}px` }}>
+          <div className="bg-card/80 backdrop-blur-xl p-2 rounded-2xl border border-border/50 shadow-2xl">
+            <PianoKeyboard
+              lowNote={minNote}
+              highNote={maxNote}
+              activeNotes={activeNotes}
+              targetNotes={targetNotes}
+              noteResults={noteResultMap}
+              fingerNumbers={fingerNumbers}
+            />
+          </div>
         </div>
 
         {/* Practice controls */}
-        <div className="pb-3">
+        <div className="absolute bottom-6 right-6 z-20 bg-card/90 backdrop-blur-md p-2 rounded-2xl border border-border shadow-2xl">
           <PracticeControls />
         </div>
       </div>

@@ -12,6 +12,7 @@ import { CurriculumPage } from '@/components/curriculum/CurriculumPage'
 import { GamePage } from '@/components/game/GamePage'
 import { LibraryPage } from '@/components/library/LibraryPage'
 import { SettingsPage } from '@/components/settings/SettingsPage'
+import { EarTrainingPage } from '@/components/game/EarTrainingPage'
 import { testSong } from '@/data/test-song'
 import { getLesson } from '@/data/curriculum'
 import { useCurriculumStore } from '@/store/curriculumStore'
@@ -92,15 +93,22 @@ export default function App() {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
         <div className="text-center">
-          <h1 className="text-4xl font-black text-primary mb-6">pjano</h1>
-          <div className="w-64 h-2 bg-secondary rounded-full overflow-hidden">
-            <div
-              className="h-full bg-primary transition-all duration-300 rounded-full"
-              style={{ width: `${loadProgress * 100}%` }}
+          <motion.h1 
+            initial={{ y: -20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            className="text-6xl font-black text-primary mb-8 tracking-tighter"
+          >
+            pjano<span className="text-accent">.</span>
+          </motion.h1>
+          <div className="w-64 h-3 bg-secondary rounded-full overflow-hidden border border-border">
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${loadProgress * 100}%` }}
+              className="h-full bg-gradient-to-r from-primary to-accent transition-all duration-300 rounded-full"
             />
           </div>
-          <p className="text-muted-foreground mt-3 text-sm">
-            Loading piano samples...
+          <p className="text-muted-foreground mt-4 text-sm font-bold uppercase tracking-widest opacity-50">
+            Initialisation du piano...
           </p>
         </div>
       </div>
@@ -118,18 +126,21 @@ export default function App() {
 
   // Main app shell
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-screen bg-background overflow-hidden">
       <Sidebar currentPage={currentPage} onNavigate={handleNavigate} />
 
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 relative">
         <TopBar totalXP={totalXP} streak={streak} />
 
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto bg-gradient-to-b from-background to-card/20">
           {currentPage === 'dashboard' && (
             <DashboardPage totalXP={totalXP} streak={streak} onNavigate={handleNavigate} />
           )}
           {currentPage === 'learn' && (
             <CurriculumPage onStartLesson={handleStartLesson} />
+          )}
+          {currentPage === 'ear-training' && (
+            <EarTrainingPage />
           )}
           {currentPage === 'library' && (
             <LibraryPage onPlaySong={handlePlaySong} />
@@ -139,17 +150,25 @@ export default function App() {
           )}
         </main>
 
-        {/* Persistent piano keyboard — always playable */}
-        <div className="border-t border-border bg-card px-4 py-2 flex justify-center">
-          <PianoKeyboard
-            lowNote={48}
-            highNote={84}
-            activeNotes={activeNotes}
-            targetNotes={new Set()}
-            noteResults={new Map()}
-          />
-        </div>
+        {/* Persistent piano keyboard — only visible on certain pages to save space */}
+        {currentPage !== 'ear-training' && (
+          <motion.div 
+            initial={{ y: 100 }}
+            animate={{ y: 0 }}
+            className="border-t border-border bg-card/80 backdrop-blur-md px-4 py-4 flex justify-center shadow-2xl"
+          >
+            <PianoKeyboard
+              lowNote={48}
+              highNote={84}
+              activeNotes={activeNotes}
+              targetNotes={new Set()}
+              noteResults={new Map()}
+            />
+          </motion.div>
+        )}
       </div>
     </div>
   )
 }
+
+import { motion } from 'framer-motion'

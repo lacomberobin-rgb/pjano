@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 
 export type HandGuideLevel = 'full' | 'fingers' | 'off' | 'auto'
+export type KeyboardSize = 'auto' | 25 | 37 | 49 | 61 | 88
 
 interface SettingsState {
   masterVolume: number
@@ -11,6 +12,7 @@ interface SettingsState {
   handGuideLevel: HandGuideLevel
   preferredInputMethod: 'midi' | 'screen' | 'keyboard'
   selectedMidiDeviceId: string | null
+  keyboardSize: KeyboardSize
   defaultSpeed: number
   countdownBeats: number
   showTimingOffset: boolean
@@ -29,6 +31,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   handGuideLevel: 'auto',
   preferredInputMethod: 'screen',
   selectedMidiDeviceId: null,
+  keyboardSize: 'auto',
   defaultSpeed: 1,
   countdownBeats: 4,
   showTimingOffset: false,

@@ -18,4 +18,9 @@ export interface InputAdapter {
   connect(): void | Promise<void>
   disconnect(): void
   isConnected(): boolean
+  
+  // Optional methods for hardware that supports visual feedback (like MIDI keys lighting up)
+  lightUpNote?(note: number, colorVelocity?: number): void
+  turnOffNote?(note: number): void
+  clearAllLights?(): void
 }

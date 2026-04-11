@@ -94,6 +94,9 @@ export class GameEngine {
     if (result.noteId) {
       this.noteResultsMap.set(result.noteId, result)
       this.renderer?.setNoteResults(this.noteResultsMap)
+      if (result.grade !== 'miss') {
+        this.renderer?.triggerHitEffect(result.noteId, result.grade)
+      }
     }
     store.recordNoteResult(result)
   }
@@ -121,8 +124,27 @@ export class GameEngine {
     }
 
     if (store.status === 'playing') {
+      const previousTime = this.currentTime
       const proposed = this.currentTime + dt
       this.currentTime = this.practice.applyConstraints(proposed, this.scheduler, store)
+
+      // Loop wrap-around detection for auto-speed
+      if (store.loopStart !== null && this.currentTime === store.loopStart && previousTime > store.loopStart) {
+        if (store.isAutoSpeedEnabled) {
+          // Check accuracy for the notes in this loop range
+          const results = store.noteResults.filter(r => {
+            const note = this.song?.notes.find(n => n.id === r.noteId)
+            return note && note.time >= store.loopStart! && note.time <= store.loopEnd!
+          })
+          
+          const hits = results.filter(r => r.grade !== 'miss').length
+          const loopAccuracy = results.length > 0 ? (hits / results.length) : 1
+
+          if (loopAccuracy >= 0.9) {
+            store.setPlaybackSpeed(store.playbackSpeed + 0.05)
+          }
+        }
+      }
 
       // Check missed notes
       const missed = this.matcher.checkMissedNotes(this.scheduler.getMissedNotes(this.currentTime))

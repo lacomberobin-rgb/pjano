@@ -8,6 +8,9 @@ export class MidiInputAdapter implements InputAdapter {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private webMidi: any = null
 
+  // Cache lit notes to avoid spamming the MIDI output
+  private litNotes = new Set<number>()
+
   constructor(manager: InputManager) {
     this.manager = manager
   }
@@ -60,6 +63,7 @@ export class MidiInputAdapter implements InputAdapter {
   disconnect(): void {
     if (this.webMidi) {
       try {
+        this.clearAllLights()
         this.webMidi.disable()
       } catch {
         // ignore
@@ -83,5 +87,48 @@ export class MidiInputAdapter implements InputAdapter {
       id: input.id,
       name: input.name,
     }))
+  }
+
+  /**
+   * Sends a NoteOn message to light up a key on compatible MIDI keyboards.
+   * Velocity can often control color on advanced keyboards.
+   */
+  lightUpNote(note: number, colorVelocity = 127): void {
+    if (!this.connected || !this.webMidi || this.webMidi.outputs.length === 0) return
+    if (this.litNotes.has(note)) return // Already lit
+
+    try {
+      const output = this.webMidi.outputs[0]
+      // Play note on channel 1 with specific velocity
+      output.playNote(note, 1, { velocity: colorVelocity / 127 })
+      this.litNotes.add(note)
+    } catch (err) {
+      console.warn('Failed to send MIDI output:', err)
+    }
+  }
+
+  /**
+   * Sends a NoteOff message to turn off the light on a key.
+   */
+  turnOffNote(note: number): void {
+    if (!this.connected || !this.webMidi || this.webMidi.outputs.length === 0) return
+    if (!this.litNotes.has(note)) return
+
+    try {
+      const output = this.webMidi.outputs[0]
+      output.stopNote(note, 1)
+      this.litNotes.delete(note)
+    } catch (err) {
+      console.warn('Failed to send MIDI output:', err)
+    }
+  }
+
+  /**
+   * Turns off all currently lit notes.
+   */
+  clearAllLights(): void {
+    for (const note of this.litNotes) {
+      this.turnOffNote(note)
+    }
   }
 }
