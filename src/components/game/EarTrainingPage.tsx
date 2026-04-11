@@ -1,10 +1,9 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAudioEngine } from '@/hooks/useAudioEngine'
 import { useInput } from '@/hooks/useInput'
 import { PianoKeyboard } from '@/components/game/PianoKeyboard'
-import { Music2, Volume2, CheckCircle, XCircle, Trophy, RefreshCcw } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { Music2, Volume2, CheckCircle, XCircle, RefreshCcw } from 'lucide-react'
 
 const LEVELS = [
   { id: 1, notes: [60], label: 'Do Central' },
@@ -15,31 +14,34 @@ const LEVELS = [
 ]
 
 export function EarTrainingPage() {
-  const { playNote, stopNote } = useAudioEngine()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const engine: any = useAudioEngine()
   const [currentLevel, setCurrentLevel] = useState(0)
   const [targetNotes, setTargetNotes] = useState<number[]>([])
-  const [userNotes, setUserNotes] = useState<number[]>([])
   const [gameState, setGameState] = useState<'idle' | 'playing' | 'waiting' | 'success' | 'fail'>('idle')
   const [activeInputNotes, setActiveInputNotes] = useState<Set<number>>(new Set())
 
   const startLevel = useCallback((levelIdx: number) => {
     const level = LEVELS[levelIdx]
-    // Randomly pick one note from the level's pool for now (or multiple for chords)
-    // Simple version: pick one note
+    if (!level) return
+
     const note = level.notes[Math.floor(Math.random() * level.notes.length)]
     
-    setTargetNotes([note])
-    setUserNotes([])
-    setGameState('playing')
-    
-    // Play the target note
-    setTimeout(() => {
-      playNote(note, 0.5)
+    if (typeof note === 'number') {
+      setTargetNotes([note])
+      setGameState('playing')
+      
       setTimeout(() => {
-        setGameState('waiting')
-      }, 1000)
-    }, 500)
-  }, [playNote])
+        // Check if engine has playNote, fallback to engine.engine.playNote if needed
+        const playFn = engine.playNote || engine.engine?.playNote
+        if (playFn) playFn(note, 0.5)
+        
+        setTimeout(() => {
+          setGameState('waiting')
+        }, 1000)
+      }, 500)
+    }
+  }, [engine])
 
   useInput((event) => {
     if (gameState !== 'waiting') return
@@ -50,7 +52,6 @@ export function EarTrainingPage() {
       
       if (isCorrect) {
         setGameState('success')
-        // Award some imaginary XP here?
       } else {
         setGameState('fail')
       }
@@ -142,7 +143,7 @@ export function EarTrainingPage() {
               </div>
               <div className="space-y-2">
                 <p className="text-3xl font-black text-perfect">PARFAIT !</p>
-                <p className="text-muted-foreground font-medium">C'était bien un {targetNotes[0]}.</p>
+                <p className="text-muted-foreground font-medium">C'était la bonne note.</p>
               </div>
               <button
                 onClick={() => {
@@ -183,7 +184,8 @@ export function EarTrainingPage() {
                 </button>
                 <button
                   onClick={() => {
-                    playNote(targetNotes[0], 1)
+                    const playFn = engine.playNote || engine.engine?.playNote
+                    if (playFn) playFn(targetNotes[0], 1)
                   }}
                   className="px-6 py-3 bg-card text-foreground rounded-2xl font-black border border-border flex items-center gap-2"
                 >

@@ -47,7 +47,7 @@ export function CurriculumPage({ onStartLesson }: CurriculumPageProps) {
         {/* Connection line between modules */}
         <div className="absolute left-10 top-20 bottom-20 w-1 bg-gradient-to-b from-primary/20 via-accent/20 to-transparent rounded-full -z-10 hidden md:block" />
 
-        {curriculum.map((mod, idx) => {
+        {curriculum.map((mod) => {
           const unlocked = isModuleUnlocked(mod.prerequisites)
           const progress = moduleProgress.get(mod.id) ?? 0
 

@@ -179,7 +179,7 @@ export function LibraryPage({ onPlaySong }: LibraryPageProps) {
               <p className="font-medium italic">Aucun morceau trouvé...</p>
             </motion.div>
           ) : (
-            filteredSongs.map((song, idx) => {
+            filteredSongs.map((song) => {
               const isImported = importedSongs.some(s => s.id === song.id)
               return (
                 <motion.div

@@ -1,6 +1,5 @@
 import { useGameStore } from '@/store/gameStore'
 import { motion } from 'framer-motion'
-import { cn } from '@/lib/utils'
 
 export function SongProgress() {
   const currentTime = useGameStore(s => s.currentTime)

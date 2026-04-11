@@ -19,7 +19,6 @@ interface Particle {
   vx: number
   vy: number
   life: number
-  maxLife: number
 }
 
 interface FloatingText {
@@ -36,11 +35,13 @@ export class FallingNotesRenderer {
   private hitZone: Graphics
   private laneLines: Graphics
   private noteGraphics = new Map<string, Graphics>()
+  private noteTexts = new Map<string, Text>()
   private particles: Particle[] = []
   private floatingTexts: FloatingText[] = []
 
   private songNotes: SongNote[] = []
   private noteResults = new Map<string, NoteResult>()
+  private activeHand: 'left' | 'right' | 'both' = 'both'
   private lowNote = 48
   private highNote = 84
   private pixelsPerSecond = PIXELS_PER_SECOND
@@ -86,6 +87,10 @@ export class FallingNotesRenderer {
     this.noteResults = results
   }
 
+  setActiveHand(hand: 'left' | 'right' | 'both'): void {
+    this.activeHand = hand
+  }
+
   triggerHitEffect(noteId: string, grade: TimingGrade): void {
     const note = this.songNotes.find(n => n.id === noteId)
     if (!note) return
@@ -110,7 +115,6 @@ export class FallingNotesRenderer {
         vx: (Math.random() - 0.5) * 10,
         vy: -Math.random() * 10 - 2,
         life: 1,
-        maxLife: 0.5 + Math.random() * 0.5,
       })
     }
 
@@ -135,35 +139,24 @@ export class FallingNotesRenderer {
     this.floatingTexts.push({ text, vy: -2, life: 1 })
   }
 
-  /**
-   * Compute X position and width for a note, matching the PianoKeyboard layout exactly.
-   * White keys are evenly distributed across the canvas width.
-   * Black keys are centered between their neighboring white keys with the same
-   * per-note-in-octave offsets used by PianoKeyboard.
-   */
   private getKeyX(midiNote: number): { x: number; width: number } {
     const w = this.app.screen.width
     const whiteCount = this.countWhiteKeys()
     const whiteKeyWidth = w / whiteCount
 
     if (isBlackKey(midiNote)) {
-      // Count white keys before this black key
       let whiteIndex = 0
       for (let i = this.lowNote; i < midiNote; i++) {
         if (!isBlackKey(i)) whiteIndex++
       }
-      // Same offset logic as PianoKeyboard
       const noteInOctave = midiNote % 12
-      const offsets: Record<number, number> = {
-        1: -0.05, 3: 0.05, 6: -0.08, 8: 0, 10: 0.08,
-      }
+      const offsets: Record<number, number> = { 1: -0.05, 3: 0.05, 6: -0.08, 8: 0, 10: 0.08 }
       const offset = offsets[noteInOctave] ?? 0
       const centerX = (whiteIndex + offset) * whiteKeyWidth
       const bw = whiteKeyWidth * 0.6
       return { x: centerX - bw / 2, width: bw }
     }
 
-    // White key
     let whiteIndex = 0
     for (let i = this.lowNote; i < midiNote; i++) {
       if (!isBlackKey(i)) whiteIndex++
@@ -179,12 +172,9 @@ export class FallingNotesRenderer {
     return count
   }
 
-  /** Y coordinate of the "hit zone" line — notes reach here at their play time */
   private getHitZoneY(): number {
     return this.app.screen.height - 6
   }
-
-  private noteTexts = new Map<string, Text>()
 
   update(currentTime: number): void {
     if (this._destroyed) return
@@ -196,12 +186,13 @@ export class FallingNotesRenderer {
     // 1. Update Particles
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i]
+      if (!p) continue
+      
       p.life -= 0.02
       p.gfx.x += p.vx
       p.gfx.y += p.vy
-      p.vy += 0.4 // gravity
+      p.vy += 0.4
       p.gfx.alpha = p.life
-
       if (p.life <= 0) {
         this.particlesContainer.removeChild(p.gfx)
         p.gfx.destroy()
@@ -212,12 +203,13 @@ export class FallingNotesRenderer {
     // 2. Update Floating Texts
     for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
       const t = this.floatingTexts[i]
+      if (!t) continue
+
       t.life -= 0.015
       t.text.y += t.vy
-      t.vy *= 0.95 // slow down upward movement
+      t.vy *= 0.95
       t.text.alpha = t.life
       t.text.scale.set(1 + (1 - t.life) * 0.5)
-
       if (t.life <= 0) {
         this.textContainer.removeChild(t.text)
         t.text.destroy()
@@ -226,14 +218,12 @@ export class FallingNotesRenderer {
     }
 
     // 3. Update Notes
-    // Remove off-screen sprites and texts
     for (const [id, gfx] of this.noteGraphics) {
       const note = this.songNotes.find(n => n.id === id)
       if (!note || note.time + note.duration < windowStart) {
         this.notesContainer.removeChild(gfx)
         gfx.destroy()
         this.noteGraphics.delete(id)
-        
         const txt = this.noteTexts.get(id)
         if (txt) {
           this.textContainer.removeChild(txt)
@@ -243,7 +233,6 @@ export class FallingNotesRenderer {
       }
     }
 
-    // Add / update visible notes
     const fingerStyle = new TextStyle({
       fontFamily: 'Inter',
       fontSize: 14,
@@ -265,22 +254,16 @@ export class FallingNotesRenderer {
       const noteBottom = hitZoneY - (note.time - currentTime) * this.pixelsPerSecond
       const noteHeight = Math.max(note.duration * this.pixelsPerSecond, 10)
 
-      // Determine color and alpha
       const result = this.noteResults.get(note.id)
       let color: number
-      let alpha = 0.85
-
-      // Dim notes of the inactive hand
-      if (this.activeHand !== 'both' && note.hand !== this.activeHand) {
-        alpha = 0.15
-      }
+      let alpha = (this.activeHand !== 'both' && note.hand !== this.activeHand) ? 0.15 : 0.85
 
       if (result) {
         color = GRADE_COLORS[result.grade]
-        if (result.grade === 'miss') alpha = 0.25
+        if (result.grade === 'miss') alpha *= 0.3
       } else if (note.missed) {
         color = GRADE_COLORS.miss
-        alpha = 0.25
+        alpha *= 0.3
       } else {
         color = isBlackKey(note.midiNote) ? UPCOMING_BLACK_COLOR : UPCOMING_COLOR
       }
@@ -289,8 +272,7 @@ export class FallingNotesRenderer {
       gfx.roundRect(x + 1, noteBottom - noteHeight, width - 2, noteHeight, 4)
       gfx.fill({ color, alpha })
 
-      // Finger number
-      if (note.finger && !result && !note.missed) {
+      if (note.finger && !result && !note.missed && alpha > 0.2) {
         let txt = this.noteTexts.get(note.id)
         if (!txt) {
           txt = new Text({ text: note.finger.toString(), style: fingerStyle })
@@ -302,7 +284,6 @@ export class FallingNotesRenderer {
         txt.y = noteBottom - 14
         txt.alpha = alpha
       } else if (this.noteTexts.has(note.id)) {
-        // Remove text if note was hit or missed
         const txt = this.noteTexts.get(note.id)!
         this.textContainer.removeChild(txt)
         txt.destroy()
@@ -311,7 +292,6 @@ export class FallingNotesRenderer {
     }
   }
 
-  /** Draw the hit-zone line and faint lane separators */
   private drawChrome(): void {
     if (this._destroyed) return
     const w = this.app.screen.width
@@ -320,22 +300,15 @@ export class FallingNotesRenderer {
     const whiteCount = this.countWhiteKeys()
     const whiteKeyWidth = w / whiteCount
 
-    // Hit zone glow + line
     this.hitZone.clear()
-    this.hitZone.rect(0, hitY - 10, w, 20)
-    this.hitZone.fill({ color: 0x7c3aed, alpha: 0.12 })
-    this.hitZone.rect(0, hitY - 2, w, 4)
-    this.hitZone.fill({ color: 0x7c3aed, alpha: 0.6 })
-    this.hitZone.rect(0, hitY - 1, w, 2)
-    this.hitZone.fill({ color: 0xffffff, alpha: 0.8 })
+    this.hitZone.rect(0, hitY - 10, w, 20).fill({ color: 0x7c3aed, alpha: 0.12 })
+    this.hitZone.rect(0, hitY - 2, w, 4).fill({ color: 0x7c3aed, alpha: 0.6 })
+    this.hitZone.rect(0, hitY - 1, w, 2).fill({ color: 0xffffff, alpha: 0.8 })
 
-    // Lane separators (faint vertical lines between white keys)
     this.laneLines.clear()
     for (let i = 1; i < whiteCount; i++) {
       const x = i * whiteKeyWidth
-      this.laneLines.moveTo(x, 0)
-      this.laneLines.lineTo(x, h)
-      this.laneLines.stroke({ color: 0xffffff, alpha: 0.04, width: 1 })
+      this.laneLines.moveTo(x, 0).lineTo(x, h).stroke({ color: 0xffffff, alpha: 0.04, width: 1 })
     }
   }
 
@@ -347,20 +320,19 @@ export class FallingNotesRenderer {
 
   private clearNoteGraphics(): void {
     for (const [, gfx] of this.noteGraphics) {
-      this.notesContainer.removeChild(gfx)
-      gfx.destroy()
+      this.notesContainer.removeChild(gfx); gfx.destroy()
     }
     this.noteGraphics.clear()
-
+    for (const [, txt] of this.noteTexts) {
+      this.textContainer.removeChild(txt); txt.destroy()
+    }
+    this.noteTexts.clear()
     for (const p of this.particles) {
-      this.particlesContainer.removeChild(p.gfx)
-      p.gfx.destroy()
+      this.particlesContainer.removeChild(p.gfx); p.gfx.destroy()
     }
     this.particles = []
-
     for (const t of this.floatingTexts) {
-      this.textContainer.removeChild(t.text)
-      t.text.destroy()
+      this.textContainer.removeChild(t.text); t.text.destroy()
     }
     this.floatingTexts = []
   }

@@ -2,6 +2,7 @@ import type { NoteScheduler } from './NoteScheduler'
 
 interface PracticeState {
   isWaitMode: boolean
+  activeHand: 'left' | 'right' | 'both'
   loopStart: number | null
   loopEnd: number | null
 }
