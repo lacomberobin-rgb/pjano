@@ -89,7 +89,8 @@ export class GameEngine {
     if (store.status !== 'playing' || event.type !== 'noteon') return
 
     const activeNotes = this.scheduler.getActiveNotes(this.currentTime)
-    const result = this.matcher.matchNote(event, activeNotes, this.currentTime, this.latencyOffset)
+    const activeHand = store.activeHand
+    const result = this.matcher.matchNote(event, activeNotes, this.currentTime, this.latencyOffset, activeHand)
 
     if (result.noteId) {
       this.noteResultsMap.set(result.noteId, result)
@@ -164,6 +165,7 @@ export class GameEngine {
 
     // Update PixiJS renderer directly (60fps)
     this.renderer?.setNoteResults(this.noteResultsMap)
+    this.renderer?.setActiveHand(store.activeHand)
     this.renderer?.update(this.currentTime)
 
     // Throttle React store updates

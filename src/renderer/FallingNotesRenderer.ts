@@ -265,10 +265,16 @@ export class FallingNotesRenderer {
       const noteBottom = hitZoneY - (note.time - currentTime) * this.pixelsPerSecond
       const noteHeight = Math.max(note.duration * this.pixelsPerSecond, 10)
 
-      // Determine color
+      // Determine color and alpha
       const result = this.noteResults.get(note.id)
       let color: number
       let alpha = 0.85
+
+      // Dim notes of the inactive hand
+      if (this.activeHand !== 'both' && note.hand !== this.activeHand) {
+        alpha = 0.15
+      }
+
       if (result) {
         color = GRADE_COLORS[result.grade]
         if (result.grade === 'miss') alpha = 0.25

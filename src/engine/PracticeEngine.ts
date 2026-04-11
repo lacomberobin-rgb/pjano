@@ -17,8 +17,12 @@ export class PracticeEngine {
     // Wait mode: freeze time if there's an unmatched note in the past
     if (state.isWaitMode) {
       const unmatched = scheduler.getFirstUnmatchedNote(time)
+      // Only wait if the note belongs to the active hand
       if (unmatched) {
-        time = unmatched.time
+        const isActiveHand = state.activeHand === 'both' || unmatched.hand === state.activeHand
+        if (isActiveHand) {
+          time = unmatched.time
+        }
       }
     }
 

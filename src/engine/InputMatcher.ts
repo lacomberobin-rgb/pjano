@@ -14,6 +14,7 @@ export class InputMatcher {
     activeNotes: SongNote[],
     currentTime: number,
     latencyOffset: number,
+    activeHand: 'left' | 'right' | 'both' = 'both',
   ): NoteResult {
     const adjustedTime = currentTime - latencyOffset / 1000
 
@@ -23,6 +24,9 @@ export class InputMatcher {
     for (const note of activeNotes) {
       if (note.midiNote !== input.note) continue
       if (this.matchedNoteIds.has(note.id)) continue
+      
+      // Only match if the hand matches
+      if (activeHand !== 'both' && note.hand !== activeHand) continue
 
       const offset = Math.abs(adjustedTime - note.time)
       if (offset < bestOffset) {

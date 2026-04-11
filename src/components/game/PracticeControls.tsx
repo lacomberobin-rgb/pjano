@@ -1,24 +1,63 @@
 import { useGameStore } from '@/store/gameStore'
 import { cn } from '@/lib/utils'
 import { motion } from 'framer-motion'
-import { Zap, Timer, Repeat, X } from 'lucide-react'
+import { Zap, Timer, Repeat, X, Hand } from 'lucide-react'
 
 export function PracticeControls() {
   const playbackSpeed = useGameStore(s => s.playbackSpeed)
   const isWaitMode = useGameStore(s => s.isWaitMode)
   const isAutoSpeedEnabled = useGameStore(s => s.isAutoSpeedEnabled)
+  const activeHand = useGameStore(s => s.activeHand)
   const loopStart = useGameStore(s => s.loopStart)
   const status = useGameStore(s => s.status)
   
   const setPlaybackSpeed = useGameStore(s => s.setPlaybackSpeed)
   const setWaitMode = useGameStore(s => s.setWaitMode)
   const setAutoSpeed = useGameStore(s => s.setAutoSpeed)
+  const setActiveHand = useGameStore(s => s.setActiveHand)
   const setLoop = useGameStore(s => s.setLoop)
 
   if (status === 'idle' || status === 'complete') return null
 
   return (
     <div className="flex items-center gap-6 p-1">
+      {/* Hand selection */}
+      <div className="flex items-center gap-1 bg-secondary/30 p-1 rounded-2xl border border-border/50">
+        <motion.button
+          whileTap={{ scale: 0.9 }}
+          onClick={() => setActiveHand('left')}
+          className={cn(
+            'p-2 rounded-xl transition-all flex items-center justify-center',
+            activeHand === 'left' ? 'bg-primary text-white shadow-lg' : 'text-muted-foreground hover:bg-secondary'
+          )}
+          title="Main Gauche"
+        >
+          <Hand size={16} className="-scale-x-100" />
+        </motion.button>
+        <motion.button
+          whileTap={{ scale: 0.9 }}
+          onClick={() => setActiveHand('both')}
+          className={cn(
+            'px-3 py-1.5 rounded-xl transition-all flex items-center justify-center text-[10px] font-black',
+            activeHand === 'both' ? 'bg-primary text-white shadow-lg' : 'text-muted-foreground hover:bg-secondary'
+          )}
+          title="Les Deux Mains"
+        >
+          2
+        </motion.button>
+        <motion.button
+          whileTap={{ scale: 0.9 }}
+          onClick={() => setActiveHand('right')}
+          className={cn(
+            'p-2 rounded-xl transition-all flex items-center justify-center',
+            activeHand === 'right' ? 'bg-primary text-white shadow-lg' : 'text-muted-foreground hover:bg-secondary'
+          )}
+          title="Main Droite"
+        >
+          <Hand size={16} />
+        </motion.button>
+      </div>
+
       {/* Speed control */}
       <div className="flex items-center gap-2 bg-secondary/30 p-1.5 rounded-2xl border border-border/50">
         <Timer size={16} className="text-muted-foreground ml-1" />

@@ -14,6 +14,8 @@ interface GameState {
   currentTime: number
   playbackSpeed: number
   isWaitMode: boolean
+  isAutoSpeedEnabled: boolean
+  activeHand: 'left' | 'right' | 'both'
   score: number
   combo: number
   maxCombo: number
@@ -32,6 +34,8 @@ interface GameState {
   recordNoteResult: (result: NoteResult) => void
   setPlaybackSpeed: (speed: number) => void
   setWaitMode: (enabled: boolean) => void
+  setAutoSpeed: (enabled: boolean) => void
+  setActiveHand: (hand: 'left' | 'right' | 'both') => void
   setLoop: (start: number | null, end: number | null) => void
   getSessionGrade: () => SessionGrade
   reset: () => void
@@ -53,6 +57,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   currentTime: 0,
   playbackSpeed: 1,
   isWaitMode: false,
+  isAutoSpeedEnabled: false,
+  activeHand: 'both',
   score: 0,
   combo: 0,
   maxCombo: 0,
@@ -104,6 +110,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   setPlaybackSpeed: (speed) => set({ playbackSpeed: Math.min(Math.max(0.1, speed), 2) }),
   setWaitMode: (enabled) => set({ isWaitMode: enabled }),
   setAutoSpeed: (enabled) => set({ isAutoSpeedEnabled: enabled }),
+  setActiveHand: (hand) => set({ activeHand: hand }),
   setLoop: (start, end) => set({ loopStart: start, loopEnd: end }),
 
   getSessionGrade: () => {
@@ -119,6 +126,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     status: 'idle',
     song: null,
     currentTime: 0,
+    playbackSpeed: 1,
+    isWaitMode: false,
+    isAutoSpeedEnabled: false,
+    activeHand: 'both',
     score: 0,
     combo: 0,
     maxCombo: 0,
