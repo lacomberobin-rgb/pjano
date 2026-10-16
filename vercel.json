@@ -1,0 +1,3 @@
+{
+  "ignoreCommand": "case \"${VERCEL_GIT_COMMIT_MESSAGE:-}\" in *\"[agent-routing-docs:20261016-023173b669]\"*) exit 0 ;; *) (\nexit 1\n) ;; esac"
+}

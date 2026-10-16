@@ -1,3 +1,9 @@
+<!-- BEGIN:project-environment-routing-reference -->
+## Environnement avant publication
+
+Lire `AGENTS.md` dans ce dossier avant toute tâche. Son contrat « Dépôt GitHub et environnement Vercel » fixe la cible et les vérifications obligatoires avant chaque push, déploiement, liaison ou modification de variables. Ne pas choisir de compte à partir d un ancien README, du titre du produit ou de l auteur Git. Préserver les autres consignes ci-dessous.
+<!-- END:project-environment-routing-reference -->
+
 # pjano
 
 > Learn piano by doing — Guitar Hero meets real pedagogy.
